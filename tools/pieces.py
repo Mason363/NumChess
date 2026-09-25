@@ -9,7 +9,7 @@ classes (3 bits):
 Symmetric pieces only store their left half.
 
   python3 tools/pieces.py            # writes src/sprites.h
-  python3 tools/pieces.py prev.png   # also writes a zoomed preview
+  python3 tools/pieces.py prev.png   # also writes a zoomed preview (docs/pieces.png)
 """
 import math, struct, sys, zlib
 
@@ -256,27 +256,22 @@ def shade(c, bg, color):
 
 
 def preview(imgs, path, Z=4):
+    """Both colors of the set on board squares, zoomed Z times."""
     light, dark = (0xEB, 0xEC, 0xD0), (0x77, 0x95, 0x56)
-    W, Hh = 6 * N * Z, 2 * N * Z + 2 * N + 8
-    pix = [[(40, 40, 40)] * W for _ in range(Hh)]
+    W, Hh = 6 * N * Z, 2 * N * Z
+    pix = [[None] * W for _ in range(Hh)]
     for color in range(2):
         for i, (name, img) in enumerate(imgs):
             bg = light if (i + color) % 2 == 0 else dark
-            for y in range(N):
-                for x in range(N):
-                    rgb = shade(img[y][x], bg, color)
-                    for dy in range(Z):
-                        for dx in range(Z):
-                            pix[color * N * Z + y * Z + dy][i * N * Z + x * Z + dx] = rgb
-                    for k in range(2):
-                        bg2 = light if (i + color + k) % 2 == 0 else dark
-                        pix[2 * N * Z + 8 + color * N + y][k * 6 * N + i * N + x] = shade(img[y][x], bg2, color)
+            for y in range(N * Z):
+                for x in range(N * Z):
+                    pix[color * N * Z + y][i * N * Z + x] = shade(img[y // Z][x // Z], bg, color)
     raw = b''.join(b'\0' + bytes(v for p in row for v in p) for row in pix)
 
     def chunk(t, d):
         return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
     png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', W, Hh, 8, 2, 0, 0, 0))
-    png += chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
+    png += chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
     open(path, 'wb').write(png)
 
 
