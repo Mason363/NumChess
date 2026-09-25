@@ -1,6 +1,6 @@
 # NumChess
 
-Chess for the NumWorks calculator, built for the **N0120**. It's a native app of about 19 KB: bots, endless puzzles and a two-player clock.
+Chess for the NumWorks calculator, built for the **N0120**. It's a native app of about 20 KB: bots, endless puzzles and a two-player clock.
 
 <p>
   <img src="docs/menu.png" width="320" alt="Menu">
