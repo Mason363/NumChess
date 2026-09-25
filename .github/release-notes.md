@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Mason363/NumChess/main/docs/hero.gif" width="640" alt="Playing against a bot">
+  <img src="https://raw.githubusercontent.com/Mason363/NumChess/{{TAG}}/docs/hero.gif" width="640" alt="Playing against a bot">
 </p>
 
 Chess for the NumWorks N0120, in a native app of about 20 KB.
@@ -18,6 +18,6 @@ Chess for the NumWorks N0120, in a native app of about 20 KB.
 * **Full rules:** castling, en passant, underpromotion, and draws by stalemate, repetition, the 50-move rule or insufficient material.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Mason363/NumChess/main/docs/puzzle.gif" width="400" alt="Solving a puzzle">
-  <img src="https://raw.githubusercontent.com/Mason363/NumChess/main/docs/clock.gif" width="400" alt="Two-player clock">
+  <img src="https://raw.githubusercontent.com/Mason363/NumChess/{{TAG}}/docs/puzzle.gif" width="400" alt="Solving a puzzle">
+  <img src="https://raw.githubusercontent.com/Mason363/NumChess/{{TAG}}/docs/clock.gif" width="400" alt="Two-player clock">
 </p>

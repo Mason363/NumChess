@@ -30,6 +30,7 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" output/chess.nwa --clobber
           else
+            sed "s/{{TAG}}/$TAG/g" .github/release-notes.md > notes.md
             gh release create "$TAG" output/chess.nwa --target "$GITHUB_SHA" \
-              --title "NumChess $TAG" --notes-file .github/release-notes.md
+              --title "NumChess $TAG" --notes-file notes.md
           fi
