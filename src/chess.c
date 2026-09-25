@@ -272,7 +272,7 @@ static int insufficient(void) {
 int status(void) {
   Move ml[256];
   if (!legal(ml)) return in_check() ? CHECKMATE : STALEMATE;
-  if (P.fifty >= 100) return FIFTY;
+  if (P.fifty >= 100 || hp >= MAXGAME) return FIFTY;
   if (reps() >= 2) return REPETITION;
   if (insufficient()) return MATERIAL;
   return ONGOING;
@@ -355,7 +355,7 @@ static int16_t mscore[MSN];
 static int msp;
 static uint64_t deadline;
 static int stopped;
-int think_depth;
+int think_depth, think_score;
 
 void ui_tick(void);
 
@@ -552,6 +552,7 @@ Move think(int maxd, int ms, int *score) {
     if ((eadk_timing_millis() - t0) * 2 > (uint64_t)ms) break;
   }
   if (score) *score = bs;
+  think_score = bs;
   return root[0];
 }
 
@@ -696,7 +697,7 @@ static int tactic(void) {
 }
 
 void puzzle_gen(int kind, int target) {
-  for (int tries = 0;; tries++) {
+  for (int tries = 0;;) {
     ch_reset();
     int solver = eadk_random() & 1, prev = 0, s;
     for (int ply = 0; ply < 100; ply++) {
@@ -711,11 +712,12 @@ void puzzle_gen(int kind, int target) {
             PZ.rating = 250 + n * 400 + 150 * is_quiet(PZ.sol[0]) + eadk_random() % 100;
             ok = 1;
           } else if (!n && (kind == 0 || kind == 4)) {
-            think(3, 60000, &s);
+            think(2, 60000, &s);
             if (s >= 250 && s < MATE - 200 && s - prev >= 250) ok = tactic();
           }
           int dr = PZ.rating - target;
-          if (ok && (dr < 0 ? -dr : dr) <= 250 + 40 * tries) {
+          if (ok && !(kind & 3) && (dr < 0 ? -dr : dr) > 200 + 60 * tries++) ok = 0;
+          if (ok) {
             PZ.pre = H[hp - 1].m;
             unmake();
             PZ.start = P;
@@ -723,11 +725,11 @@ void puzzle_gen(int kind, int target) {
           }
         }
         ui_tick();
-        make(bot_move(2, 40, 0, 60000));
+        make(bot_move(1, 40, 0, 60000));
       } else {
-        think(2, 60000, &s);
-        prev = -s;
-        make(eadk_random() % 8 ? bot_move(2, 110, 0, 60000) : ml[eadk_random() % legal(ml)]);
+        Move m = eadk_random() % 8 ? bot_move(1, 110, 0, 60000) : (think(1, 60000, 0), ml[eadk_random() % legal(ml)]);
+        prev = -think_score;
+        make(m);
       }
     }
   }

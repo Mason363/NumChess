@@ -256,7 +256,7 @@ static const struct { uint8_t min, inc; } TC[] = {{1, 0}, {3, 0}, {3, 2}, {5, 0}
 
 static int bot = 4, pside = 0, pcol, tc = 3, autoflip = 1;
 static int32_t tm[2];
-static int prating = 800, pstreak, pdelta, spin_mode, spin;
+static int prating = 800, pstreak, pdelta, spin_mode, spin_y, spin;
 
 /* -------------------------------------------------------------- Input */
 
@@ -672,7 +672,7 @@ again:
     }
     if (md == M_BOT && P.side != pcol) {
       uint64_t t0 = eadk_timing_millis();
-      spin_mode = 2;
+      spin_mode = 2, spin_y = 80;
       Move m = bot_move(BOTS[bot].depth, BOTS[bot].noise, BOTS[bot].blunder, BOTS[bot].ms);
       spin_mode = 0;
       int32_t wait = 450 - (int32_t)(eadk_timing_millis() - t0);
@@ -745,7 +745,7 @@ void ui_tick(void) {
   for (int k = 0; k < 8; k++) {
     static const int8_t dx[8] = {0, 11, 16, 11, 0, -11, -16, -11}, dy[8] = {-16, -11, 0, 11, 16, 11, 0, -11};
     if (spin_mode == 1) fill(278 + dx[(spin - k) & 7], 118 + dy[(spin - k) & 7], 5, 5, mix(BG, WHITE, 32 - k * 4));
-    else if (k < 3) fill(271 + k * 8, 80, 3, 3, (spin % 3) == k ? WHITE : CARD);
+    else if (k < 3) fill(271 + k * 8, spin_y, 3, 3, (spin % 3) == k ? WHITE : CARD);
   }
 }
 
@@ -758,16 +758,39 @@ static void rate(int won) {
   pstreak = won ? pstreak + 1 : 0;
 }
 
+/* Generate the next puzzle while the solved one stays on screen. */
+static Puzzle next;
+static int have_next;
+static void pregenerate(int kind) {
+  static Undo h[16];
+  Puzzle cur = PZ;
+  Pos p = P;
+  int n = hp;
+  memcpy(h, H, sizeof h);
+  spin_mode = 2, spin_y = 164;
+  puzzle_gen(kind, prating);
+  spin_mode = 0;
+  next = PZ, have_next = 1;
+  PZ = cur, P = p, hp = n;
+  memcpy(H, h, sizeof h);
+  fill(270, 164, 24, 3, BG);
+}
+
 static void puzzles(int kind) {
   mode = M_PUZ;
+  have_next = 0;
   for (;;) {
-    fill(240, 0, 80, 240, BG);
-    sel = -2;
-    draw_board();
-    dim(0, 0, 240, 240);
-    spin_mode = 1;
-    puzzle_gen(kind, prating);
-    spin_mode = 0;
+    if (have_next) {
+      PZ = next, have_next = 0;
+    } else {
+      fill(240, 0, 80, 240, BG);
+      sel = -2;
+      draw_board();
+      dim(0, 0, 240, 240);
+      spin_mode = 1;
+      puzzle_gen(kind, prating);
+      spin_mode = 0;
+    }
     P = PZ.start;
     hp = 0;
     flip = !P.side;
@@ -839,6 +862,7 @@ static void puzzles(int kind) {
         draw_board();
         panel();
         feedback(1);
+        pregenerate(kind);
         continue;
       }
       feedback(1);
