@@ -11,6 +11,7 @@ uint64_t eadk_timing_millis() {
   return ts.tv_sec * 1000ull + ts.tv_nsec / 1000000;
 }
 uint32_t eadk_random() { return (uint32_t)rand(); }
+void ui_tick(void) {}
 
 static void set_fen(const char *f) {
   memset(&P, 0, sizeof P);

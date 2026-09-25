@@ -357,8 +357,13 @@ static uint64_t deadline;
 static int stopped;
 int think_depth;
 
+void ui_tick(void);
+
 static int tick(void) {
-  if ((++nodes & 1023) == 0 && eadk_timing_millis() > deadline) stopped = 1;
+  if ((++nodes & 1023) == 0) {
+    ui_tick();
+    if (eadk_timing_millis() > deadline) stopped = 1;
+  }
   return stopped;
 }
 
@@ -655,8 +660,6 @@ Move defend(int n) {
 Puzzle PZ;
 #define PMARGIN 180
 
-void gen_hook(void);
-
 static int is_quiet(Move m) { return !P.b[MTO(m)] && !gives_check(m); }
 
 /* Is m the only good move here (every other move scores at least PMARGIN less)? */
@@ -719,7 +722,7 @@ void puzzle_gen(int kind, int target) {
             return;
           }
         }
-        gen_hook();
+        ui_tick();
         make(bot_move(2, 40, 0, 60000));
       } else {
         think(2, 60000, &s);

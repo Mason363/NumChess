@@ -187,7 +187,7 @@ static void draw_sq(int s) {
     for (int x = 0; x < 30; x++) {
       C c = base;
       int dx = 2 * x - 29, dy = 2 * y - 29, d2 = dx * dx + dy * dy;
-      if (chk && d2 < 1100) c = mix(c, RED, (1100 - d2) * 30 / 1100);
+      if (chk && d2 < 1300) c = mix(c, RED, d2 < 500 ? 30 : (1300 - d2) * 30 / 800);
       if (mark == 2 && d2 > 600 && d2 < 900) c = mix(c, 0, 8);
       if (pc) c = shade(pc, x, y, c);
       if (mark == 1 && d2 < 150) c = mix(c, 0, d2 < 118 ? 8 : 4);
@@ -239,12 +239,12 @@ static const struct {
 } BOTS[] = {
   {"Pip", PAWN, 1, 250, 45, 150, 0, RGB(0x8B, 0xC3, 0x4A)},
   {"Milo", PAWN, 1, 200, 28, 300, 0, RGB(0x4C, 0xAF, 0x50)},
-  {"Luna", KNIGHT, 1, 150, 18, 450, 0, RGB(0x26, 0xA6, 0x9A)},
-  {"Otto", KNIGHT, 2, 120, 12, 600, 0, RGB(0x29, 0xB6, 0xF6)},
-  {"Ivy", BISHOP, 2, 90, 8, 750, 0, RGB(0x42, 0x8D, 0xF5)},
+  {"Luna", KNIGHT, 1, 130, 14, 450, 0, RGB(0x26, 0xA6, 0x9A)},
+  {"Otto", KNIGHT, 2, 110, 10, 600, 0, RGB(0x29, 0xB6, 0xF6)},
+  {"Ivy", BISHOP, 2, 85, 7, 750, 0, RGB(0x42, 0x8D, 0xF5)},
   {"Finn", BISHOP, 2, 65, 5, 900, 0, RGB(0x5C, 0x6B, 0xC0)},
-  {"Nova", ROOK, 3, 45, 3, 1050, 0, RGB(0x7E, 0x57, 0xC2)},
-  {"Hugo", ROOK, 3, 30, 2, 1200, 0, RGB(0xAB, 0x47, 0xBC)},
+  {"Nova", ROOK, 3, 55, 3, 1050, 0, RGB(0x7E, 0x57, 0xC2)},
+  {"Hugo", ROOK, 4, 40, 2, 1200, 0, RGB(0xAB, 0x47, 0xBC)},
   {"Vera", QUEEN, 4, 20, 1, 1400, 0, RGB(0xEC, 0x40, 0x7A)},
   {"Rex", QUEEN, 5, 10, 0, 1600, 800, RGB(0xEF, 0x53, 0x50)},
   {"Zara", KING, 7, 0, 0, 1850, 900, RGB(0xFF, 0x70, 0x43)},
@@ -256,7 +256,7 @@ static const struct { uint8_t min, inc; } TC[] = {{1, 0}, {3, 0}, {3, 2}, {5, 0}
 
 static int bot = 4, pside = 0, pcol, tc = 3, autoflip = 1;
 static int32_t tm[2];
-static int prating = 800, pstreak, pdelta;
+static int prating = 800, pstreak, pdelta, spin_mode, spin;
 
 /* -------------------------------------------------------------- Input */
 
@@ -278,8 +278,15 @@ static void button(int x, int y, int w, int h, const char *s, int on, int icon) 
   C c = on ? GREEN : CARD;
   rrect(x, y, w, h, 8, c);
   if (icon) {
-    sprite(icon, x + 10, y + (h - 30) / 2, 0);
-    text(s, x + 50, y + (h - 18) / 2, 1, WHITE, c);
+    int ty = y + (h - 40) / 2;
+    rrect(x + 8, ty, 40, 40, 9, SQ_L);
+    if (icon == KING) {
+      sprite(KING, x + 6, ty + 5, 0);
+      sprite(KING | BLACK, x + 20, ty + 5, 0);
+    } else {
+      sprite(icon, x + 13, ty + 5, 0);
+    }
+    text(s, x + 60, y + (h - 18) / 2, 1, WHITE, c);
   } else {
     ctext(s, x + w / 2, y + (h - 18) / 2, 1, on ? WHITE : RGB(0xDD, 0xDC, 0xDA), c);
   }
@@ -300,7 +307,7 @@ static int list(const char *const *items, const uint8_t *icons, int n, int x, in
 
 static int main_menu(int *i) {
   static const char *const items[] = {"Play", "Puzzles", "2 Players"};
-  static const uint8_t icons[] = {KNIGHT, QUEEN, KING | BLACK};
+  static const uint8_t icons[] = {KNIGHT | BLACK, QUEEN | BLACK, KING};
   fill(0, 0, 320, 240, BG);
   return list(items, icons, 3, 60, 200, 56, 14, i);
 }
@@ -656,16 +663,18 @@ again:
       last = eadk_timing_millis();
     }
     if (reason) {
-      if (md == M_BOT) title = winner < 0 ? "Draw" : winner == pcol ? "You win" : BOTS[bot].name;
-      else title = winner < 0 ? "Draw" : winner ? "Black wins" : "White wins";
+      if (md == M_BOT) title = winner < 0 ? "Draw" : winner == pcol ? "You won" : BOTS[bot].name;
+      else title = winner < 0 ? "Draw" : winner ? "Black won" : "White won";
       static char t[12];
-      if (md == M_BOT && winner >= 0 && winner != pcol) strcpy(strcpy(t, title) + strlen(title), " wins"), title = t;
+      if (md == M_BOT && winner >= 0 && winner != pcol) strcpy(strcpy(t, title) + strlen(title), " won"), title = t;
       if (game_over(title, reason)) goto again;
       return;
     }
     if (md == M_BOT && P.side != pcol) {
       uint64_t t0 = eadk_timing_millis();
+      spin_mode = 2;
       Move m = bot_move(BOTS[bot].depth, BOTS[bot].noise, BOTS[bot].blunder, BOTS[bot].ms);
+      spin_mode = 0;
       int32_t wait = 450 - (int32_t)(eadk_timing_millis() - t0);
       if (wait > 0) eadk_timing_msleep(wait);
       do_move(m);
@@ -688,13 +697,13 @@ again:
       }
       if (k == 1) {
         flip ^= 1;
-        if (md == M_2P) autoflip = !autoflip;
+        autoflip = flip == P.side;
       }
       if (k == 2 || k == 3) {
-        title = k == 2 ? "Draw" : P.side ? "White wins" : "Black wins";
+        title = k == 2 ? "Draw" : P.side ? "White won" : "Black won";
         if (md == M_BOT && k == 3) {
           static char t[12];
-          strcpy(strcpy(t, BOTS[bot].name) + strlen(BOTS[bot].name), " wins");
+          strcpy(strcpy(t, BOTS[bot].name) + strlen(BOTS[bot].name), " won");
           title = t;
         }
         if (game_over(title, k == 2 ? "Agreement" : "Resignation")) goto again;
@@ -726,18 +735,18 @@ again:
 
 /* ------------------------------------------------------------- Puzzles */
 
-static int spin;
-void gen_hook(void) {
+/* Progress animation while the engine works: 0 off, 1 ring (puzzles), 2 dots (bot). */
+void ui_tick(void) {
   static uint64_t t;
   uint64_t now = eadk_timing_millis();
-  if (now - t < 60) return;
+  if (!spin_mode || now - t < 70) return;
   t = now;
-  for (int k = 0; k < 8; k++) {
-    int i = (spin - k) & 7;
-    static const int8_t dx[8] = {0, 11, 16, 11, 0, -11, -16, -11}, dy[8] = {-16, -11, 0, 11, 16, 11, 0, -11};
-    fill(280 + dx[i] - 2, 120 + dy[i] - 2, 5, 5, mix(BG, WHITE, 32 - k * 4));
-  }
   spin++;
+  for (int k = 0; k < 8; k++) {
+    static const int8_t dx[8] = {0, 11, 16, 11, 0, -11, -16, -11}, dy[8] = {-16, -11, 0, 11, 16, 11, 0, -11};
+    if (spin_mode == 1) fill(278 + dx[(spin - k) & 7], 118 + dy[(spin - k) & 7], 5, 5, mix(BG, WHITE, 32 - k * 4));
+    else if (k < 3) fill(271 + k * 8, 80, 3, 3, (spin % 3) == k ? WHITE : CARD);
+  }
 }
 
 static void rate(int won) {
@@ -756,7 +765,9 @@ static void puzzles(int kind) {
     sel = -2;
     draw_board();
     dim(0, 0, 240, 240);
+    spin_mode = 1;
     puzzle_gen(kind, prating);
+    spin_mode = 0;
     P = PZ.start;
     hp = 0;
     flip = !P.side;
@@ -800,14 +811,10 @@ static void puzzles(int kind) {
       }
       if (m <= 0) continue;
       hintsq = -1;
-      int ok;
-      if (PZ.mate) {
-        make(m);
-        ok = mated_within(rem - 1);
-        unmake();
-      } else {
-        ok = m == PZ.sol[step];
-      }
+      make(m);
+      int ok = (!step && m == PZ.sol[0]) || status() == CHECKMATE ||
+               (PZ.mate ? mated_within(rem - 1) : m == PZ.sol[step]);
+      unmake();
       if (!ok) {
         do_move(m);
         badsq = MTO(m);
@@ -825,7 +832,7 @@ static void puzzles(int kind) {
       }
       do_move(m);
       step++;
-      if (PZ.mate ? status() == CHECKMATE : step >= PZ.nsol) {
+      if (status() == CHECKMATE || (!PZ.mate && step >= PZ.nsol)) {
         if (!failed) rate(1);
         done = 1;
         sel = -2;

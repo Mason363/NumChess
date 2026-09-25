@@ -1,6 +1,7 @@
 # NumChess — chess for the NumWorks calculator.
 #   make          build output/chess.nwa
 #   make run      install on a connected calculator
+#   make check    link the app like the calculator does (output/chess.bin)
 #   make test     run engine tests on the host
 Q ?= @
 CC = arm-none-eabi-gcc
@@ -15,12 +16,16 @@ LDFLAGS = -Wl,--relocatable -nostartfiles --specs=nano.specs
 LDFLAGS += -Wl,-e,main -Wl,-u,eadk_app_name -Wl,-u,eadk_app_icon -Wl,-u,eadk_api_level
 LDFLAGS += -Wl,--gc-sections -flinker-output=nolto-rel
 
-.PHONY: build run test clean
+.PHONY: build run check test clean
 build: $(BUILD_DIR)/chess.nwa
 
 run: $(BUILD_DIR)/chess.nwa
 	@echo "INSTALL $<"
 	$(Q) $(NWLINK) install-nwa $<
+
+check: $(BUILD_DIR)/chess.nwa
+	$(Q) $(NWLINK) nwa-bin $< $(BUILD_DIR)/chess.bin
+	@echo "BIN     $(BUILD_DIR)/chess.bin: $$(wc -c < $(BUILD_DIR)/chess.bin) bytes"
 
 $(BUILD_DIR)/chess.nwa: $(SRC) src/chess.h src/sprites.h $(BUILD_DIR)/icon.o
 	@echo "LD      $@"
