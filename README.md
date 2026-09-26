@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> # NumChess is now part of [NumPlay](https://github.com/Mason363/NumPlay)
+> **NumPlay is newer and more actively maintained**: a collection of NumWorks games in one app, with the latest fixes to NumChess. Every game is still available on its own: **[download NumChess.nwa](https://github.com/Mason363/NumPlay/releases/latest/download/NumChess.nwa)**.
+
 <p align="center">
   <img src="docs/icon.png" width="84" alt="NumChess icon">
 </p>
