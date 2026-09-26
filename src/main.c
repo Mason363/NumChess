@@ -941,17 +941,35 @@ static int puzzle_menu(int *i) {
 #define FBH 16
 static C framebuf[320 * FBH];   /* 10 KB scratch for one chunk of rows */
 
+#define SPLASH_W 120
+#define SPLASH_H 120
+
 static void splash_frame(int t) {
   eadk_display_wait_for_vblank();
-  for (int y = 0; y < 240; y += FBH) {
-    int rows = (y + FBH <= 240) ? FBH : (240 - y);
-    for (int r = 0; r < rows; r++) {
-      const C *src = &splash_pixels[(y + r) * 320];
-      C *dst = &framebuf[r * 320];
-      for (int x = 0; x < 320; x++) dst[x] = mix(SPLASH_BG, src[x], t);
+  int x0 = (320 - SPLASH_W) / 2;
+  int y0 = (240 - SPLASH_H) / 2;
+  for (int r = 0; r < SPLASH_H; r += FBH) {
+    int rows = (r + FBH <= SPLASH_H) ? FBH : (SPLASH_H - r);
+    for (int y = 0; y < rows; y++) {
+      const uint16_t *src = &splash_pixels[(r + y) * SPLASH_W];
+      /* find runs of non-transparent pixels, push each run */
+      int x = 0;
+      while (x < SPLASH_W) {
+        while (x < SPLASH_W && src[x] == 0x0001) x++;    /* skip transparent */
+        int start = x;
+        while (x < SPLASH_W && src[x] != 0x0001) {
+          framebuf[x - start] = mix(SPLASH_BG, src[x], t);
+          x++;
+        }
+        int len = x - start;
+        if (len > 0) {
+          eadk_display_push_rect(
+            (eadk_rect_t){(uint16_t)(x0 + start), (uint16_t)(y0 + r + y),
+                          (uint16_t)len, 1},
+            framebuf);
+        }
+      }
     }
-    eadk_display_push_rect(
-      (eadk_rect_t){0, (uint16_t)y, 320, (uint16_t)rows}, framebuf);
   }
 }
 static void splash(void) {
