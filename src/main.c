@@ -25,7 +25,7 @@ typedef uint16_t C;
 enum { K_LEFT, K_UP, K_DOWN, K_RIGHT, K_OK, K_BACK, K_UNDO = 17, K_EXE = 52 };
 enum { M_BOT, M_2P, M_PUZ };
 
-static C buf[900];
+static C buf[200 * 56];   /* was 900 — 22.4 KB, fits the largest button */
 
 /* ------------------------------------------------------------ Drawing */
 
@@ -79,6 +79,22 @@ static void rrect(int x, int y, int w, int h, int r, C c) {
       buf[i] = mix(buf[i], c, (int)(32 * clampf(0.5f - d)));
     }
     eadk_display_push_rect(R, buf);
+  }
+}
+/* Anti-aliased rounded rect whose corners blend against `behind`
+   instead of against whatever is currently on the screen. No pre-clear
+   needed. Use when `behind` is a known solid color (BG, or a button). */
+static void rrect_on(int x, int y, int w, int h, int r, C c, C behind) {
+  if (h > 2 * r) fill(x, y + r, w, h - 2 * r, c);
+  for (int j = 0; j < r; j++) {
+    float dy = r - j - 0.5f;
+    for (int i = 0; i < w; i++) {
+      float dx = i < r ? r - i - 0.5f : i >= w - r ? i + 0.5f - (w - r) : 0;
+      float d = __builtin_sqrtf(dx * dx + dy * dy) - r;
+      buf[i] = mix(behind, c, (int)(32 * clampf(0.5f - d)));
+    }
+    eadk_display_push_rect((eadk_rect_t){x, y + j, w, 1}, buf);
+    eadk_display_push_rect((eadk_rect_t){x, y + h - 1 - j, w, 1}, buf);
   }
 }
 
@@ -276,34 +292,74 @@ static int arrow(int e, int *i, int n, int horiz) {
 
 static void button(int x, int y, int w, int h, const char *s, int on, int icon) {
   C c = on ? GREEN : CARD;
-  rrect(x, y, w, h, 8, c);
-  if (icon) {
-    int ty = y + (h - 40) / 2;
-    rrect(x + 8, ty, 40, 40, 9, SQ_L);
-    if (icon == KING) {
-      sprite(KING, x + 6, ty + 5, 0);
-      sprite(KING | BLACK, x + 20, ty + 5, 0);
-    } else {
-      sprite(icon, x + 13, ty + 5, 0);
+  int r = 8;
+
+  /* 1. Rounded rect, corners AA'd against BG */
+  for (int j = 0; j < h; j++) {
+    float dy = j < r ? r - j - 0.5f : j >= h - r ? j + 0.5f - (h - r) : 0;
+    for (int i = 0; i < w; i++) {
+      float dx = i < r ? r - i - 0.5f : i >= w - r ? i + 0.5f - (w - r) : 0;
+      float d = __builtin_sqrtf(dx * dx + dy * dy) - r;
+      buf[j * w + i] = mix(BG, c, (int)(32 * clampf(0.5f - d)));
     }
-    text(s, x + 60, y + (h - 18) / 2, 1, WHITE, c);
-  } else {
-    ctext(s, x + w / 2, y + (h - 18) / 2, 1, on ? WHITE : RGB(0xDD, 0xDC, 0xDA), c);
   }
+
+  if (icon) {
+    /* 2. Icon square (SQ_L), corners AA'd against c */
+    int sx = 8, sy = (h - 40) / 2, S = 40, R = 9;
+    for (int j = 0; j < S; j++) {
+      float dy = j < R ? R - j - 0.5f : j >= S - R ? j + 0.5f - (S - R) : 0;
+      for (int i = 0; i < S; i++) {
+        float dx = i < R ? R - i - 0.5f : i >= S - R ? i + 0.5f - (S - R) : 0;
+        float d = __builtin_sqrtf(dx * dx + dy * dy) - R;
+        int o = (sy + j) * w + sx + i;
+        buf[o] = mix(buf[o], SQ_L, (int)(32 * clampf(0.5f - d)));
+      }
+    }
+    /* 3. Piece sprites on top of the icon square */
+    if (icon == KING) {
+      for (int k = 0; k < 2; k++) {
+        int px = 6 + k * 14, py = sy + 5;
+        int pc = k ? (KING | BLACK) : KING;
+        for (int j = 0; j < 30; j++)
+          for (int i = 0; i < 30; i++) {
+            int o = (py + j) * w + px + i;
+            buf[o] = shade(pc, i, j, buf[o]);
+          }
+      }
+    } else {
+      int px = 13, py = sy + 5;
+      for (int j = 0; j < 30; j++)
+        for (int i = 0; i < 30; i++) {
+          int o = (py + j) * w + px + i;
+          buf[o] = shade(icon, i, j, buf[o]);
+        }
+    }
+  }
+
+  /* 4. One atomic push for the entire button */
+  eadk_display_push_rect((eadk_rect_t){x, y, w, h}, buf);
+
+  /* 5. Text last (single EADK call, already atomic) */
+  if (icon) text(s, x + 60, y + (h - 18) / 2, 1, WHITE, c);
+  else ctext(s, x + w / 2, y + (h - 18) / 2, 1, on ? WHITE : RGB(0xDD, 0xDC, 0xDA), c);
 }
 
 /* Vertical list of buttons. Returns chosen index or -1. */
 static int list(const char *const *items, const uint8_t *icons, int n, int x, int w, int h, int gap, int *i) {
-  int y0 = (240 - n * h - (n - 1) * gap) / 2, redraw = 1;
+  int y0 = (240 - n * h - (n - 1) * gap) / 2;
+  for (int k = 0; k < n; k++)
+    button(x, y0 + k * (h + gap), w, h, items[k], k == *i, icons ? icons[k] : 0);
   for (;;) {
-    if (redraw)
-      for (int k = 0; k < n; k++) button(x, y0 + k * (h + gap), w, h, items[k], k == *i, icons ? icons[k] : 0);
-    int e = key(100000);
-    redraw = arrow(e, i, n, 0);
+    int e = key(100000), o = *i;
+    if (arrow(e, i, n, 0)) {
+      button(x, y0 + o * (h + gap), w, h, items[o], 0, icons ? icons[o] : 0);
+      button(x, y0 + *i * (h + gap), w, h, items[*i], 1, icons ? icons[*i] : 0);
+    }
     if (e == K_OK) return *i;
     if (e == K_BACK) return -1;
   }
-}
+} //only redraw the two affected buttons, flicker patch
 
 static int main_menu(int *i) {
   static const char *const items[] = {"Play", "Puzzles", "2 Players"};
@@ -312,91 +368,104 @@ static int main_menu(int *i) {
   return list(items, icons, 3, 60, 200, 56, 14, i);
 }
 
+static void disc_bg(int cx, int cy, int r, C c) {
+  rrect_on(cx - r, cy - r, 2 * r, 2 * r, r, c, BG);
+}
+
 static void avatar(int b, int cx, int cy, int r) {
-  disc(cx, cy, r, BOTS[b].col);
+  disc_bg(cx, cy, r, BOTS[b].col);         /* was disc(...) */
   sprite(BOTS[b].pc, cx - 15, cy - 16, 0);
+}
+
+static void bot_row(int k, int selected) {
+  C c = selected ? CARD : BG;
+  rrect_on(6, k * 20, 148, 20, 6, c, BG);         /* was: fill + rrect */
+  disc(20, k * 20 + 10, 5, BOTS[k].col);
+  text(BOTS[k].name, 32, k * 20 + 3, 0, selected ? WHITE : RGB(0xC8, 0xC7, 0xC5), c);
+  char e[6];
+  itoa(BOTS[k].elo, e);
+  text(e, 146 - 7 * strlen(e), k * 20 + 3, 0, DIM, c);
+}
+
+/* Top of the right column only (stops above the side buttons at y=172). */
+static void bot_info(void) {
+  fill(180, 108, 120, 50, BG);             /* was fill(160, 0, 160, 160, BG) */
+  avatar(bot, 240, 62, 40);
+  ctext(BOTS[bot].name, 240, 114, 1, WHITE, BG);
+  char e[6];
+  itoa(BOTS[bot].elo, e);
+  ctext(e, 240, 136, 0, DIM, BG);
+}
+
+static void side_buttons(void) {
+  for (int k = 0; k < 3; k++) {
+    int x = 184 + k * 40;
+    rrect_on(x, 172, 32, 32, 8, k == pside ? GREEN : CARD, BG);  /* was: fill + rrect */
+    sprite(KING | (k == 1 ? 16 : k == 2 ? BLACK : 0), x + 1, 173, 0);
+  }
 }
 
 static int bot_select(void) {
   fill(0, 0, 320, 240, BG);
-  int redraw = 1;
+  for (int k = 0; k < NBOTS; k++) bot_row(k, k == bot);
+  bot_info();
+  side_buttons();
   for (;;) {
-    if (redraw) {
-      for (int k = 0; k < NBOTS; k++) {
-        C c = k == bot ? CARD : BG;
-        rrect(6, k * 20, 148, 20, 6, c);
-        disc(20, k * 20 + 10, 5, BOTS[k].col);
-        text(BOTS[k].name, 32, k * 20 + 3, 0, k == bot ? WHITE : RGB(0xC8, 0xC7, 0xC5), c);
-        char e[6];
-        itoa(BOTS[k].elo, e);
-        text(e, 146 - 7 * strlen(e), k * 20 + 3, 0, DIM, c);
-      }
-      fill(160, 0, 160, 240, BG);
-      avatar(bot, 240, 62, 40);
-      ctext(BOTS[bot].name, 240, 114, 1, WHITE, BG);
-      char e[6];
-      itoa(BOTS[bot].elo, e);
-      ctext(e, 240, 136, 0, DIM, BG);
-      for (int k = 0; k < 3; k++) {
-        int x = 184 + k * 40;
-        rrect(x, 172, 32, 32, 8, k == pside ? GREEN : CARD);
-        sprite(KING | (k == 1 ? 16 : k == 2 ? BLACK : 0), x + 1, 173, 0);
-      }
-    }
     int e = key(100000), o = bot, os = pside;
     arrow(e, &bot, NBOTS, 0);
     arrow(e, &pside, 3, 1);
-    redraw = o != bot || os != pside;
+    if (bot   != o)  { bot_row(o, 0); bot_row(bot, 1); bot_info(); }
+    if (pside != os) side_buttons();
     if (e == K_OK) return 1;
     if (e == K_BACK) return 0;
   }
+}
+
+static void tc_card(int k, int selected) {
+  int x = 12 + (k & 3) * 76, y = 64 + (k >> 2) * 64;
+  char s[8], *o = s;
+  if (TC[k].min) { o = itoa(TC[k].min, o); *o++ = '+'; itoa(TC[k].inc, o); }
+  else strcpy(s, "\xE2\x88\x9E");
+  C bg = selected ? GREEN : CARD;
+  rrect_on(x, y, 68, 52, 8, bg, BG);            
+  ctext(s, x + 34, y + 17, 1, WHITE, bg);
 }
 
 static int time_select(void) {
   fill(0, 0, 320, 240, BG);
-  int redraw = 1;
+  for (int k = 0; k < 8; k++) tc_card(k, k == tc);
   for (;;) {
-    if (redraw)
-      for (int k = 0; k < 8; k++) {
-        int x = 12 + (k & 3) * 76, y = 64 + (k >> 2) * 64;
-        char s[8], *o = s;
-        if (TC[k].min) {
-          o = itoa(TC[k].min, o);
-          *o++ = '+';
-          itoa(TC[k].inc, o);
-        } else {
-          strcpy(s, "\xE2\x88\x9E");
-        }
-        rrect(x, y, 68, 52, 8, k == tc ? GREEN : CARD);
-        ctext(s, x + 34, y + 17, 1, WHITE, k == tc ? GREEN : CARD);
-      }
     int e = key(100000), o = tc;
-    if (e == K_LEFT && tc & 3) tc--;
+    if (e == K_LEFT  && (tc & 3)) tc--;
     if (e == K_RIGHT && (tc & 3) < 3) tc++;
-    if (e == K_UP && tc > 3) tc -= 4;
-    if (e == K_DOWN && tc < 4) tc += 4;
-    redraw = o != tc;
+    if (e == K_UP    && tc > 3) tc -= 4;
+    if (e == K_DOWN  && tc < 4) tc += 4;
+    if (tc != o) { tc_card(o, 0); tc_card(tc, 1); }
     if (e == K_OK) return 1;
     if (e == K_BACK) return 0;
   }
-}
+} //only redraw old/new
 
 /* Modal list drawn over the dimmed board. */
+static void overlay_item(const char *const *items, int y, int k, int selected) {
+  C c = selected ? GREEN : BG;
+  rrect_on(46, y + 6 + k * 36, 148, 36, 8, c, BG);  
+  ctext(items[k], 120, y + 15 + k * 36, 1, WHITE, c);
+}
+
 static int overlay(const char *const *items, int n) {
   dim(0, 0, 240, 240);
   int h = n * 36 + 12, y = (240 - h) / 2, i = 0;
   rrect(40, y, 160, h, 12, BG);
+  for (int k = 0; k < n; k++) overlay_item(items, y, k, k == i);
   for (;;) {
-    for (int k = 0; k < n; k++) {
-      C c = k == i ? GREEN : BG;
-      rrect(46, y + 6 + k * 36, 148, 36, 8, c);
-      ctext(items[k], 120, y + 15 + k * 36, 1, WHITE, c);
-    }
-    int e = key(100000);
+    int e = key(100000), o = i;
     arrow(e, &i, n, 0);
+    if (i != o) { overlay_item(items, y, o, 0); overlay_item(items, y, i, 1); }
     if (e == K_OK || e == K_BACK) return e == K_OK ? i : -1;
   }
-}
+} // don't redraw every iteration
+
 
 /* --------------------------------------------------------------- Panel */
 
@@ -605,16 +674,22 @@ static int game_over(const char *title, const char *why) {
   rrect(20, 58, 200, 124, 12, BG);
   ctext(title, 120, 74, 1, WHITE, BG);
   ctext(why, 120, 98, 0, DIM, BG);
+  static const char *const b[2] = {"Rematch", "Menu"};
   int i = 0;
+  for (int k = 0; k < 2; k++) {
+    C c = k == i ? GREEN : CARD;
+    rrect_on(30 + k * 94, 130, 86, 38, 8, c, BG);
+    ctext(b[k], 73 + k * 94, 140, 1, WHITE, c);
+  }
   for (;;) {
-    static const char *const b[2] = {"Rematch", "Menu"};
-    for (int k = 0; k < 2; k++) {
-      C c = k == i ? GREEN : CARD;
-      rrect(30 + k * 94, 130, 86, 38, 8, c);
-      ctext(b[k], 73 + k * 94, 140, 1, WHITE, c);
-    }
-    int e = key(100000);
+    int e = key(100000), o = i;
     arrow(e, &i, 2, 1);
+    if (i != o)
+      for (int k = 0; k < 2; k++) {
+      C c = k == i ? GREEN : CARD;
+      rrect_on(30 + k * 94, 130, 86, 38, 8, c, BG);
+      ctext(b[k], 73 + k * 94, 140, 1, WHITE, c);
+      }
     if (e == K_OK) return !i;
     if (e == K_BACK) return 0;
   }
