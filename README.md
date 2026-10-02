@@ -178,3 +178,7 @@ make run      # install on a connected calculator
 ```
 
 Every push is built by GitHub Actions. Pushing a `v*` tag publishes a release with `chess.nwa` attached.
+
+## License
+
+NumChess is licensed under the [GNU General Public License v3.0](LICENSE). Copyright (c) 2026 Mason Chen.
